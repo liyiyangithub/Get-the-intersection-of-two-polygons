@@ -1,0 +1,280 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+def is_in_poly(p, poly):
+    poly = poly[0: len(poly) - 1]
+    """
+    :param p: [x, y]
+    :param poly: [[], [], [], [], ...]
+    :return:
+    """
+    px, py = p
+    is_in = False
+    for i, corner in enumerate(poly):
+        next_i = i + 1 if i + 1 < len(poly) else 0
+        x1, y1 = corner
+        x2, y2 = poly[next_i]
+        if (x1 == px and y1 == py) or (x2 == px and y2 == py):  # if point is on vertex
+            is_in = True
+            break
+        if min(y1, y2) < py <= max(y1, y2):  # find horizontal edges of polygon
+            x = x1 + (py - y1) * (x2 - x1) / (y2 - y1)
+            if x == px:  # if point is on edge
+                is_in = False#---------------------------------------------------------------------------------------------
+                break
+            elif x > px:  # if point is on left-side of line
+                is_in = not is_in
+    return is_in
+#-----------------------------------------------------------------------------------------------111111111111111111111111
+def isinpolygon(point,vertex_lst:list, contain_boundary=True):
+    #检测点是否位于区域外接矩形内
+    lngaxis, lataxis = zip(*vertex_lst)
+    minlng, maxlng = min(lngaxis),max(lngaxis)
+    minlat, maxlat = min(lataxis),max(lataxis)
+    lng, lat = point
+    if contain_boundary:
+        isin = (minlng<=lng<=maxlng) & (minlat<=lat<=maxlat)
+    else:
+        isin = (minlng<lng<maxlng) & (minlat<lat<maxlat)
+    return isin
+
+def isintersect(poi,spoi,epoi):
+    #输入：判断点，边起点，边终点，都是[lng,lat]格式数组
+    #射线为向东的纬线
+    #可能存在的bug，当区域横跨本初子午线或180度经线的时候可能有问题
+    lng, lat = poi
+    slng, slat = spoi
+    elng, elat = epoi
+    if poi == spoi:
+        #print("在顶点上")
+        return None
+    if slat==elat: #排除与射线平行、重合，线段首尾端点重合的情况
+        return False
+    if slat>lat and elat>lat: #线段在射线上边
+        return False
+    if slat<lat and elat<lat: #线段在射线下边
+        return False
+    if slat==lat and elat>lat: #交点为下端点，对应spoint
+        return False
+    if elat==lat and slat>lat: #交点为下端点，对应epoint
+        return False
+    if slng<lng and elat<lat: #线段在射线左边
+        return False
+    #求交点
+    xseg=elng-(elng-slng)*(elat-lat)/(elat-slat)
+    if xseg == lng:
+        #print("点在多边形的边上")
+        return None
+    if xseg<lng: #交点在射线起点的左侧
+        return False
+    return True  #排除上述情况之后
+
+def isin_multipolygon(poi,vertex_lst, contain_boundary=True):
+    # 判断是否在外包矩形内，如果不在，直接返回false
+    if not isinpolygon(poi, vertex_lst, contain_boundary):
+        return False
+    sinsc = 0
+    for spoi, epoi in zip(vertex_lst[:-1],vertex_lst[1::]):
+        intersect = isintersect(poi, spoi, epoi)
+        if intersect is None:
+            return (False, True)[contain_boundary]
+        elif intersect:
+            sinsc+=1
+    return sinsc%2==1
+
+
+# 找多边形的边界
+def get_boundary(Q, P):
+    # get XPmax, XPmin, YPmax, YPmin
+    XPmax = -99999999
+    XPmin = 99999999
+    YPmax = -99999999
+    YPmin = 99999999
+    for (x, y) in Q:
+        XPmax = max(XPmax, x)
+        XPmin = min(XPmin, x)
+        YPmax = max(YPmax, y)
+        YPmin = min(YPmin, y)
+
+    # get XQmax, XQmin, YQmax, YQmin
+    XQmax = -99999999
+    XQmin = 99999999
+    YQmax = -99999999
+    YQmin = 99999999
+    for (x, y) in Q:
+        XQmax = max(XQmax, x)
+        XQmin = min(XQmin, x)
+        YQmax = max(YQmax, y)
+        YQmin = min(YQmin, y)
+
+    return XPmax, XPmin, YPmax, YPmin, XQmax, XQmin, YQmax, YQmin
+
+
+# 计算两个线段的交点
+def get_intersect_point(Q1, Q2, P1, P2):
+    x1, y1 = Q1[0], Q1[1]
+    x2, y2 = Q2[0], Q2[1]
+    x3, y3 = P1[0], P1[1]
+    x4, y4 = P2[0], P2[1]
+
+    px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / ((x1 - x2) * (y3 - y4) - (y1 - y2) * (x3-x4))
+    py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / ((x1 - x2) * (y3 - y4) - (y1 - y2) * (x3-x4))
+
+
+    return [px, py]
+
+# 判断两个线段是否相交
+def is_intersect(Q1, Q2, P1, P2):
+    # 先找交点
+    x1, y1 = Q1[0], Q1[1]
+    x2, y2 = Q2[0], Q2[1]
+    x3, y3 = P1[0], P1[1]
+    x4, y4 = P2[0], P2[1]
+
+    intersect_point = get_intersect_point(Q1, Q2, P1, P2)  #---[px,py]
+
+    x, y = intersect_point[0], intersect_point[1]
+
+    k=0.000000001
+
+    if ((x1 - x) * (x - x2))+ k > 0 and ((y1 - y) * (y - y2))+ k >0 and ((x3 - x) * (x - x4))+ k > 0 and ((y3 - y) * (y - y4))+ k >0:
+            return True
+    else:
+            return False
+
+# 计算两个多边形的交集
+def get_intersect(Q, P):
+    # step1
+    XPmax, XPmin, YPmax, YPmin, XQmax, XQmin, YQmax, YQmin = get_boundary(Q, P)
+
+    # step2
+    if XPmax <= XQmin or YPmax <= YQmin or XPmin >= XQmax or YPmin >= YQmax:
+        return []
+
+    # step3
+    nQ = len(Q) - 1
+    nP = len(P) - 1
+
+    A = np.zeros((nQ, nP))
+    B = np.empty((nQ, nP, 2))
+
+    for i in range(nQ):
+        for j in range(nP):
+            A[i, j] = is_intersect(Q[i], Q[i + 1], P[j], P[j + 1])
+            if (A[i, j] == True):
+                B[i, j] = get_intersect_point(Q[i], Q[i + 1], P[j], P[j + 1])
+
+    # step4
+    for i in range(nQ):
+        for j in range(nP):
+            if (A[i, j] == True):
+                # 当前的交点坐标
+                cur_pos = [B[i, j, 0], B[i, j, 1]]
+                # 当前的交点索引
+                cur_idx = [i, j]
+                cur_case = 0
+                # break                 #--------------break---------------修改
+
+    answer_pos = []
+    answer_idx = []
+    while (True):
+        # 记录
+        answer_pos.append(cur_pos)
+        answer_idx.append(cur_idx)
+
+        # case 0 : 当前点是P和Q的交点
+
+        if (cur_case == 0):
+            x,y = cur_idx[0],cur_idx[1]#X为Q(green),Y为P(red)
+            # 找Q边上的后继
+            flag = 0
+            for j in range(y+1, nP):   #
+                if (A[x, j] == True):
+                    flag = 1
+                    Q_next_pos = [B[x, j, 0], B[x, j, 1]]
+                    Q_next_idx = [x, j]
+                    Q_next_case = 0           #交点
+                    # print("Q边上的后继节点为：", Q_next_pos, Q_next_idx)
+                    break
+
+            if (flag == 0):
+                Q_next_pos = Q[(x + 1) % nQ]
+                Q_next_idx = [(x + 1) % nQ, -1]
+                Q_next_case = 1               #非交点
+                # print("Q边上的后继节点为：", Q_next_pos, Q_next_idx)
+            # 找P边上的后继
+            flag = 0
+            for i in range(x+1, nQ):
+                if (A[i, y] == True):
+                    flag = 1
+                    P_next_pos = [B[i, y, 0], B[i, y, 1]]
+                    P_next_idx = [i, y]
+                    P_next_case = 0          #交点
+
+                    break
+
+            if (flag == 0):
+                P_next_pos = P[(y + 1) % nP]
+                P_next_idx = [-1, (y + 1) % nP]
+                P_next_case = 2              #非交点
+                # print("P边上的后继节点为：", P_next_pos, P_next_idx)
+            # 决定后继节点
+#------------------------------------------------------------------------------------------------------------------------------
+            if (Q_next_case == 1 and is_in_poly(Q_next_pos, P)) or (not is_in_poly(P_next_pos, Q)):
+                next_pos = Q_next_pos
+                next_idx = Q_next_idx
+                next_case = Q_next_case
+
+            elif(P_next_case == 2 and is_in_poly(P_next_pos, Q)) or (not is_in_poly(Q_next_pos, P)):
+                next_pos = P_next_pos
+                next_idx = P_next_idx
+                next_case = P_next_case
+#----------------------------------------------------------------------------------------------------------------------------------
+        # case 1 : 当前点是Q边上的端点
+        elif (cur_case == 1):
+            x = cur_idx[0]
+            # 找Q边上的后继
+            flag = 0
+            for j in range(nP):
+                if (A[x, j] == True):
+                    flag = 1
+                    next_pos = [B[x, j, 0], B[x, j, 1]]
+                    next_idx = [x, j]
+                    next_case = 0
+                    break
+            if (flag == 0):
+                next_pos = Q[(x + 1) % nQ]
+                next_idx = [(x + 1) % nQ, -1]
+                next_case = 1
+
+        # case 2 : 当前点是P边上的端点
+        elif (cur_case == 2):
+            y = cur_idx[1]
+            # 找P边上的后继
+            flag = 0
+            for i in range(nQ):
+                if (A[i, y] == True):
+                    flag = 1
+                    next_pos = [B[i, y, 0], B[i, y, 1]]
+                    next_idx = [i, y]
+                    next_case = 0
+                    break
+            if (flag == 0):
+                next_pos = P[(y + 1) % nP]
+                next_idx = [-1, (y + 1) % nP]
+                next_case = 2
+
+        # 迭代换点
+        # print("before",cur_pos)
+        cur_pos = next_pos
+        cur_idx = next_idx
+        cur_case = next_case
+        # print("after", cur_pos)
+        # 判断是否闭合,若已经闭合，退出
+        if (cur_pos == answer_pos[0] and cur_idx == answer_idx[0]):
+            break
+
+    answer_pos.append(cur_pos)
+
+
+    return answer_pos
